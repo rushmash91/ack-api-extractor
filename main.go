@@ -13,12 +13,13 @@ func main() {
 	servicesFlag := flag.String("service", "", "AWS service name(s), comma-separated (e.g., acm,dynamodb,lambda)")
 	outputFlag := flag.String("output", "", "Output directory for files (creates <service>-operations.json)")
 	classifyFlag := flag.Bool("classify", false, "Enable AWS Bedrock inline agent classification of operations as control plane vs data plane")
+	generatePoliciesFlag := flag.Bool("generate-policies", false, "Generate recommended IAM policies for supported operations")
 	flag.Parse()
 
 	if *servicesFlag == "" || *outputFlag == "" {
-		fmt.Println("Usage: go run main.go --service=<service1>[,service2,service3...] --output=<directory> [--classify]")
+		fmt.Println("Usage: go run main.go --service=<service1>[,service2,service3...] --output=<directory> [--classify] [--generate-policies]")
 		fmt.Println("Examples:")
-		fmt.Println("  go run main.go --service=dynamodb --output=./results --classify")
+		fmt.Println("  go run main.go --service=dynamodb --output=./results --classify --generate-policies")
 		os.Exit(1)
 	}
 
@@ -28,10 +29,18 @@ func main() {
 	for i, service := range services {
 		services[i] = strings.TrimSpace(service)
 	}
+	var features []string
 	if *classifyFlag {
-		fmt.Printf("Generating JSON files with Bedrock inline agent classification for %d service(s)\n\n", len(services))
+		features = append(features, "Bedrock classification")
+	}
+	if *generatePoliciesFlag {
+		features = append(features, "IAM policy generation")
+	}
+	
+	if len(features) > 0 {
+		fmt.Printf("Generating files with %s for %d service(s)\n\n", strings.Join(features, " and "), len(services))
 	} else {
-		fmt.Printf("Generating JSON files for %d service(s)\n\n", len(services))
+		fmt.Printf("Generating files for %d service(s)\n\n", len(services))
 	}
 	
 	// Create output directory if it doesn't exist
@@ -55,7 +64,6 @@ func main() {
 			continue
 		}
 
-		// Write JSON file
 		outputFile := fmt.Sprintf("%s/%s-operations.json", *outputFlag, serviceName)
 		if writeErr := extractor.WriteServiceOperationsJSON(serviceOps, outputFile); writeErr != nil {
 			fmt.Printf("Error writing JSON file for %s: %v\n", serviceName, writeErr)
@@ -63,6 +71,24 @@ func main() {
 		}
 
 		fmt.Printf("%s: %d operations → %s\n", serviceName, len(serviceOps.Operations), outputFile)
+
+		if *generatePoliciesFlag {
+			policy, policyErr := extractor.GenerateSinglePolicy(serviceName, serviceOps.Operations)
+			if policyErr != nil {
+				fmt.Printf("Error generating policy for %s: %v\n", serviceName, policyErr)
+			} else {
+				if validateErr := extractor.ValidatePolicyJSON(*policy); validateErr != nil {
+					fmt.Printf("Warning: Policy validation failed for %s: %v\n", serviceName, validateErr)
+				}
+				
+				policyFile := fmt.Sprintf("%s/%s-policy.json", *outputFlag, serviceName)
+				if writePolicyErr := extractor.WritePolicyJSON(policy, policyFile); writePolicyErr != nil {
+					fmt.Printf("Error writing policy file for %s: %v\n", serviceName, writePolicyErr)
+				} else {
+					fmt.Printf("%s: policy → %s\n", serviceName, policyFile)
+				}
+			}
+		}
 		totalOperations += len(serviceOps.Operations)
 		successfulServices++
 	}

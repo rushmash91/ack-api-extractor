@@ -70,3 +70,17 @@ type GeneratorConfig struct {
 type SDKNames struct {
 	ModelName string `yaml:"model_name"`
 }
+
+// IAMPolicy represents an AWS IAM policy document
+type IAMPolicy struct {
+	Version   string            `json:"Version"`
+	Statement []PolicyStatement `json:"Statement"`
+}
+
+// PolicyStatement represents a single IAM policy statement
+type PolicyStatement struct {
+	Effect    string      `json:"Effect"`
+	Action    []string    `json:"Action"`
+	Resource  interface{} `json:"Resource"`
+	Condition interface{} `json:"Condition,omitempty"`
+}
