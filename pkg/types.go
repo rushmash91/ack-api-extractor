@@ -60,3 +60,13 @@ type AgentResponse struct {
 	Trace     string `json:"trace"`
 	Output    string `json:"output"`
 }
+
+// GeneratorConfig represents the structure of generator.yaml files
+type GeneratorConfig struct {
+	SDKNames SDKNames `yaml:"sdk_names"`
+}
+
+// SDKNames represents the SDK names configuration
+type SDKNames struct {
+	ModelName string `yaml:"model_name"`
+}
