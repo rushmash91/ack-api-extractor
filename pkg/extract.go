@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"regexp"
 	"bufio"
 )
 
@@ -27,16 +26,6 @@ func findOperationInController(serviceName, operationName string) (string, int) 
 	pkgPath := filepath.Join(controllerPath, "pkg")
 	if _, err := os.Stat(pkgPath); os.IsNotExist(err) {
 		return "", 0
-	}
-
-	// Compile regex patterns for operation detection
-	patterns := []*regexp.Regexp{
-		// RecordAPICall pattern
-		regexp.MustCompile(`RecordAPICall\([^,]+,\s*"` + operationName + `"`),
-		// rm.sdkapi pattern
-		regexp.MustCompile(`rm\.sdkapi\.` + operationName + `\(`),
-		// client pattern (for tags, etc.)
-		regexp.MustCompile(`client\.` + operationName + `\(`),
 	}
 
 	var foundFile string
@@ -66,14 +55,12 @@ func findOperationInController(serviceName, operationName string) (string, int) 
 			lineNum++
 			line := scanner.Text()
 
-			// Check each pattern
-			for _, pattern := range patterns {
-				if pattern.MatchString(line) {
-					relPath, _ := filepath.Rel(controllerPath, path)
-					foundFile = relPath
-					foundLine = lineNum
-					return filepath.SkipAll // Stop searching immediately
-				}
+			// Just search for the operation name
+			if strings.Contains(line, operationName) {
+				relPath, _ := filepath.Rel(controllerPath, path)
+				foundFile = relPath
+				foundLine = lineNum
+				return filepath.SkipAll
 			}
 		}
 		return nil

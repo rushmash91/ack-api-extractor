@@ -10,10 +10,12 @@ type Operation struct {
 
 // ServiceOperations represents all operations for a service
 type ServiceOperations struct {
-	ServiceName        string      `json:"service_name"`
-	TotalOperations    int         `json:"total_operations"`
-	SupportedOperations int        `json:"supported_operations"`
-	Operations         []Operation `json:"operations"`
+	ServiceName                    string      `json:"service_name"`
+	TotalOperations                int         `json:"total_operations"`
+	SupportedOperations            int         `json:"supported_operations"`
+	ControlPlaneOps                int         `json:"control_plane_operations"`
+	SupportedControlPlaneOps       int         `json:"supported_control_plane_operations"`
+	Operations                     []Operation `json:"operations"`
 }
 
 // AWSServiceModel represents the top-level structure of AWS API model JSON files
@@ -30,4 +32,31 @@ type ServiceShape struct {
 // OperationTarget represents an operation reference in the service
 type OperationTarget struct {
 	Target string `json:"target"`
+}
+
+// ClassificationResult represents the result of operation classification
+type ClassificationResult struct {
+	ControlPlane []string `json:"control_plane"`
+	DataPlane    []string `json:"data_plane"`
+}
+
+// InlineAgentConfig represents the configuration for an inline agent
+type InlineAgentConfig struct {
+	FoundationModel string                `json:"foundation_model"`
+	Instruction     string                `json:"instruction"`
+	AgentName       string                `json:"agent_name"`
+	ActionGroups    []InlineActionGroup   `json:"action_groups"`
+}
+
+// InlineActionGroup represents an action group for inline agent
+type InlineActionGroup struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// AgentResponse represents the response from the inline agent
+type AgentResponse struct {
+	SessionId string `json:"session_id"`
+	Trace     string `json:"trace"`
+	Output    string `json:"output"`
 }

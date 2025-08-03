@@ -11,7 +11,7 @@ import (
 
 
 // ExtractDetailedOperationsFromService extracts operations with metadata structure
-func ExtractDetailedOperationsFromService(serviceName string) (*ServiceOperations, error) {
+func ExtractDetailedOperationsFromService(serviceName string, enableClassification bool) (*ServiceOperations, error) {
 	jsonFile, err := findServiceModelJSONFile(serviceName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find JSON file for service %s: %w", serviceName, err)
@@ -57,11 +57,28 @@ func ExtractDetailedOperationsFromService(serviceName string) (*ServiceOperation
 		return nil, fmt.Errorf("no operations found for service %s", serviceName)
 	}
 
+	// Apply classification if enabled
+	controlPlaneCount := 0
+	supportedControlPlaneCount := 0
+	
+	if enableClassification {
+		classification, err := ClassifyOperations(serviceName, operations)
+		if err != nil {
+			// Log error but continue without classification
+			fmt.Printf("Warning: Failed to classify operations for %s: %v\n", serviceName, err)
+		} else {
+			operations = ApplyClassification(operations, classification)
+			controlPlaneCount, supportedControlPlaneCount = CountControlPlaneOperations(operations)
+		}
+	}
+
 	return &ServiceOperations{
-		ServiceName:        serviceName,
-		TotalOperations:    len(operations),
-		SupportedOperations: supportedCount,
-		Operations:         operations,
+		ServiceName:              serviceName,
+		TotalOperations:          len(operations),
+		SupportedOperations:      supportedCount,
+		ControlPlaneOps:          controlPlaneCount,
+		SupportedControlPlaneOps: supportedControlPlaneCount,
+		Operations:               operations,
 	}, nil
 }
 
