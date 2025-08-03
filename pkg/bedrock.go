@@ -12,6 +12,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/bedrockagentruntime/types"
 )
 
+
+const maxOperationsPerBatch = 100
+
 // ClassifyOperations uses AWS Bedrock Inline Agent to classify operations as control plane vs data plane
 func ClassifyOperations(serviceName string, operations []Operation) (*ClassificationResult, error) {
 	if len(operations) == 0 {
@@ -26,18 +29,43 @@ func ClassifyOperations(serviceName string, operations []Operation) (*Classifica
 		operationNames = append(operationNames, op.Name)
 	}
 
-	inputText := buildClassificationInput(serviceName, operationNames)
-	response, err := invokeInlineAgent(inputText)
-	if err != nil {
-		return nil, fmt.Errorf("failed to invoke inline agent: %w", err)
+	return classifyInBatches(serviceName, operationNames, maxOperationsPerBatch)
+}
+
+// classifyInBatches processes large operation lists in smaller batches
+func classifyInBatches(serviceName string, operationNames []string, batchSize int) (*ClassificationResult, error) {
+	var allControlPlane []string
+	var allDataPlane []string
+
+	for i := 0; i < len(operationNames); i += batchSize {
+		end := i + batchSize
+		if end > len(operationNames) {
+			end = len(operationNames)
+		}
+
+		batch := operationNames[i:end]
+		fmt.Printf("Processing batch %d/%d (%d operations)\n", 
+			(i/batchSize)+1, (len(operationNames)+batchSize-1)/batchSize, len(batch))
+
+		inputText := buildClassificationInput(serviceName, batch)
+		response, err := invokeInlineAgent(inputText)
+		if err != nil {
+			return nil, fmt.Errorf("failed to invoke inline agent for batch %d: %w", (i/batchSize)+1, err)
+		}
+
+		result, err := parseClassificationResponse(response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse classification response for batch %d: %w", (i/batchSize)+1, err)
+		}
+
+		allControlPlane = append(allControlPlane, result.ControlPlane...)
+		allDataPlane = append(allDataPlane, result.DataPlane...)
 	}
 
-	result, err := parseClassificationResponse(response)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse classification response: %w", err)
-	}
-
-	return result, nil
+	return &ClassificationResult{
+		ControlPlane: allControlPlane,
+		DataPlane:    allDataPlane,
+	}, nil
 }
 
 // buildClassificationInput creates the input text for operation classification
@@ -170,13 +198,10 @@ Ensure every operation from the input list appears in exactly one category.`),
 	// Extract text from the response stream
 	var responseText strings.Builder
 	for event := range result.GetStream().Events() {
-		switch v := event.(type) {
-		case *types.InlineAgentResponseStreamMemberChunk:
-			if v.Value.Bytes != nil {
-				responseText.Write(v.Value.Bytes)
+		if chunk, ok := event.(*types.InlineAgentResponseStreamMemberChunk); ok {
+			if chunk.Value.Bytes != nil {
+				responseText.Write(chunk.Value.Bytes)
 			}
-		case *types.InlineAgentResponseStreamMemberTrace:
-			// Handle trace events if needed for debugging
 		}
 	}
 
@@ -192,10 +217,13 @@ func parseClassificationResponse(response string) (*ClassificationResult, error)
 	response = strings.TrimSpace(response)
 	
 	start := strings.Index(response, "{")
-	end := strings.LastIndex(response, "}")
-	
-	if start == -1 || end == -1 || start >= end {
+	if start == -1 {
 		return nil, fmt.Errorf("no valid JSON found in response: %s", response)
+	}
+	
+	end := strings.LastIndex(response, "}")
+	if end == -1 || end <= start {
+		return nil, fmt.Errorf("incomplete JSON in response: %s", response)
 	}
 	
 	jsonStr := response[start : end+1]
