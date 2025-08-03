@@ -35,11 +35,12 @@ func ExtractDetailedOperationsFromService(serviceName string) (*ServiceOperation
 			for _, opTarget := range shape.Operations {
 				operationName := extractOperationName(opTarget.Target)
 				if operationName != "" {
+					file, line := findOperationInController(serviceName, operationName)
 					operations = append(operations, Operation{
 						Name: operationName,
 						Type: "",
-						File: "",
-						Line: 0,
+						File: file,
+						Line: line,
 					})
 				}
 			}
@@ -97,4 +98,3 @@ func extractOperationName(target string) string {
 	}
 	return ""
 }
-
