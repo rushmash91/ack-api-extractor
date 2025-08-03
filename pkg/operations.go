@@ -29,6 +29,7 @@ func ExtractDetailedOperationsFromService(serviceName string) (*ServiceOperation
 
 	// Find the service shape and extract operations
 	var operations []Operation
+	supportedCount := 0
 	
 	for _, shape := range model.Shapes {
 		if shape.Type == "service" && len(shape.Operations) > 0 {
@@ -42,6 +43,10 @@ func ExtractDetailedOperationsFromService(serviceName string) (*ServiceOperation
 						File: file,
 						Line: line,
 					})
+					// Count supported operations in the same loop
+					if file != "" && line > 0 {
+						supportedCount++
+					}
 				}
 			}
 			break
@@ -53,8 +58,10 @@ func ExtractDetailedOperationsFromService(serviceName string) (*ServiceOperation
 	}
 
 	return &ServiceOperations{
-		ServiceName: serviceName,
-		Operations:  operations,
+		ServiceName:        serviceName,
+		TotalOperations:    len(operations),
+		SupportedOperations: supportedCount,
+		Operations:         operations,
 	}, nil
 }
 

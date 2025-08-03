@@ -10,8 +10,10 @@ type Operation struct {
 
 // ServiceOperations represents all operations for a service
 type ServiceOperations struct {
-	ServiceName string      `json:"service_name"`
-	Operations  []Operation `json:"operations"`
+	ServiceName        string      `json:"service_name"`
+	TotalOperations    int         `json:"total_operations"`
+	SupportedOperations int        `json:"supported_operations"`
+	Operations         []Operation `json:"operations"`
 }
 
 // AWSServiceModel represents the top-level structure of AWS API model JSON files
