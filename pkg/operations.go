@@ -9,6 +9,30 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// processOperation processes a single operation and adds it to the appropriate slice
+func processOperation(operationName, serviceName string, operationNames map[string]bool, operations *[]Operation, unsupportedOperations *[]Operation, supportedCount *int) {
+	if operationName != "" && !operationNames[operationName] {
+		operationNames[operationName] = true
+		file, line := findOperationInController(serviceName, operationName)
+		operation := Operation{
+			Name: operationName,
+			Type: "",
+			File: file,
+			Line: line,
+		}
+		
+		if file != "" && line > 0 {
+			// Supported operation - mark as control_plane directly and add to main list
+			operation.Type = "control_plane"
+			*operations = append(*operations, operation)
+			(*supportedCount)++
+		} else {
+			// Unsupported operation - will need classification
+			*unsupportedOperations = append(*unsupportedOperations, operation)
+		}
+	}
+}
+
 // ExtractDetailedOperationsFromService extracts operations with metadata structure
 func ExtractDetailedOperationsFromService(serviceName string, enableClassification bool) (*ServiceOperations, error) {
 	jsonFile, err := findServiceModelJSONFile(serviceName)
@@ -26,48 +50,59 @@ func ExtractDetailedOperationsFromService(serviceName string, enableClassificati
 		return nil, fmt.Errorf("failed to parse JSON file %s: %w", jsonFile, err)
 	}
 
-	// Find the service shape and extract operations
 	var operations []Operation
+	var unsupportedOperations []Operation
+	operationNames := make(map[string]bool) // Track seen operation names to avoid duplicates
 	supportedCount := 0
 	
+	// First, collect operations from service shapes
 	for _, shape := range model.Shapes {
 		if shape.Type == "service" && len(shape.Operations) > 0 {
 			for _, opTarget := range shape.Operations {
 				operationName := extractOperationName(opTarget.Target)
-				if operationName != "" {
-					file, line := findOperationInController(serviceName, operationName)
-					operations = append(operations, Operation{
-						Name: operationName,
-						Type: "",
-						File: file,
-						Line: line,
-					})
-					if file != "" && line > 0 {
-						supportedCount++
-					}
-				}
+				processOperation(operationName, serviceName, operationNames, &operations, &unsupportedOperations, &supportedCount)
 			}
 			break
 		}
+	}
+	
+	// Then, collect all operation shapes (shapes with type "operation") for models like lambda
+	for shapeName, shape := range model.Shapes {
+		if shape.Type == "operation" {
+			operationName := extractOperationName(shapeName)
+			processOperation(operationName, serviceName, operationNames, &operations, &unsupportedOperations, &supportedCount)
+		}
+	}
+
+	// Classification Logic:
+	// - All SUPPORTED operations (found in controller code) are automatically marked as "control_plane"
+	// - Only UNSUPPORTED operations are sent to AWS Bedrock for classification
+	// - This reduces API costs and assumes implemented operations are control plane by nature
+	controlPlaneCount := 0
+	supportedControlPlaneCount := 0
+	
+	if enableClassification && len(unsupportedOperations) > 0 {
+		classification, err := ClassifyOperations(serviceName, unsupportedOperations)
+		if err != nil {
+			fmt.Printf("Warning: Failed to classify operations for %s: %v\n", serviceName, err)
+			for _, op := range unsupportedOperations {
+				op.Type = "Unknown"
+				operations = append(operations, op)
+			}
+		} else {
+			classified := ApplyClassification(unsupportedOperations, classification)
+			operations = append(operations, classified...)
+		}
+	} else if len(unsupportedOperations) > 0 {
+		// If classification is disabled, add unsupported operations with blank type
+		operations = append(operations, unsupportedOperations...)
 	}
 
 	if len(operations) == 0 {
 		return nil, fmt.Errorf("no operations found for service %s", serviceName)
 	}
-
-	// Apply classification if enabled
-	controlPlaneCount := 0
-	supportedControlPlaneCount := 0
 	
-	if enableClassification {
-		classification, err := ClassifyOperations(serviceName, operations)
-		if err != nil {
-			fmt.Printf("Warning: Failed to classify operations for %s: %v\n", serviceName, err)
-		} else {
-			operations = ApplyClassification(operations, classification)
-			controlPlaneCount, supportedControlPlaneCount = CountControlPlaneOperations(operations)
-		}
-	}
+	controlPlaneCount, supportedControlPlaneCount = CountControlPlaneOperations(operations)
 
 	return &ServiceOperations{
 		ServiceName:              serviceName,

@@ -127,9 +127,15 @@ When `--generate-policies` is enabled, the tool also generates IAM policy JSON f
 
 ## Operation Classification
 
-When `--classify` is enabled, the tool uses AWS Bedrock's Claude model to classify operations:
+The tool uses a two-tier classification approach:
 
-- **Control Plane**: Operations that manage AWS infrastructure (create, configure, delete resources)
+### Automatic Classification
+- **Supported Operations**: Operations found in existing controller code are automatically marked as **Control Plane**
+- This assumes that implemented operations are inherently control plane by nature
+
+### AWS Bedrock Classification  
+When `--classify` is enabled, only **unsupported operations** are sent to AWS Bedrock's Claude model for classification:
+
+- **Control Plane**: Operations that manage AWS infrastructure (create, configure, delete resources)  
 - **Data Plane**: Operations that work with data within existing resources
 
-This classification helps identify which operations are most critical for Kubernetes resource management.
