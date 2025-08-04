@@ -1,4 +1,4 @@
-# ACK API Extractor
+# ACK Operations Extractor
 
 A tool for extracting and analyzing AWS API operations from service models, designed to support the AWS Controllers for Kubernetes (ACK) project.
 
